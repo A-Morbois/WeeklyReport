@@ -3,6 +3,7 @@ param (
 )
 
 
+
 #region Tool
 function Azure_CreateHeader
 {
@@ -52,8 +53,24 @@ function Azure_GetItem
         }
         catch
         {
-            Write-Log -Path $Config.logPath -Level "Error" -Message "$($MyInvocation.MyCommand) ::  Error while getting the existing workitems : $_"
+			" $(get-date) ::$_" | out-file logs.txt
+            Write-Error "Error while getting the existing workitems : $_" 
+			
         }
+}
+
+Function Get-Color
+{
+    param ($workitem)
+
+    $color = "White"
+    switch ($workitem.State)
+    {
+        "New" { $color = "White"}
+        "Doing" {$color = "Blue"}
+        "Done" {$color = "Green"}
+    }
+    return $color
 }
 
 function SendMail
@@ -66,6 +83,7 @@ function SendMail
         Body = $Body
         smtpserver = $SMTPServer
         Port = $SMTPPort
+        Encoding = "Unicode"
     }
     Send-MailMessage @MailParam -BodyAsHtml 
 }
@@ -73,11 +91,11 @@ function SendMail
 
 
 ## Azure Variable
-$Azure_Organisation = "****"
+$Azure_Organisation = "******"
 $Azure_Project = "****"
-$Azure_Username = "****"
-$Azure_Password = "****"
-$Azure_Workitem_IDs = x,y,z
+$Azure_Username = "*****"
+$Azure_Password = "******"
+$Azure_Workitem_IDs =  143,144,145,180
 
 ## Date Variables
 $vendredi  = get-date 
@@ -112,11 +130,17 @@ foreach($Epic_ID in $Azure_Workitem_IDs)
     #Get Epic Workitem 
     $workitem = Azure_GetItem -_ID $Epic_ID
 
+    $c = get-color -workitem $workitem
+    Write-host $workitem.fields.'System.Title'  -ForegroundColor $c
+
     #Get Epic Child -> User Story
     $US = Azure_GetChildWorkItem -_WktID $workitem.Id
 
     foreach ($SingleStory in $US)
     {
+        $c = get-color -workitem $SingleStory
+        Write-host "---- $($SingleStory.Title)" -ForegroundColor $c
+
         if ($SingleStory.State -eq "Done")
         {
             $story = $false 
@@ -125,6 +149,8 @@ foreach($Epic_ID in $Azure_Workitem_IDs)
 
             foreach ($Task in $Tasks)
             {
+                $c = get-color -workitem $Task
+                Write-host "---- ----  $($Task.Title)" -ForegroundColor $c
                 # Avoid writting the Epic / story if nothing was done inside
                 if (!($Epic))
                 {
@@ -143,10 +169,13 @@ foreach($Epic_ID in $Azure_Workitem_IDs)
 
                 $limit = $(get-date ).addDays(-7)
                 $changed = get-date  $($Task.ChangedDate) 
+				$description = "N/A"
+				
                 if (($Task.State -eq "Done") -and ($changed -gt $limit))
                 {
                     
                     $detail = Azure_GetItem -_ID $Task.WorkItemId
+                    #write-host $detail
                     ## aligning the description on th esame line of the title
                     $description =  $($detail.fields.'System.Description').replace("<div>","").replace("</div>","")
                     $Email += " 	<ul> <li   style = 'margin-left: $Margin_Left_T3`px;$Margin_Top_Bottom;$style_font;$Font_Size;list-style-type:none;'> $($Task.Title) : $description </li></ul></br>"
